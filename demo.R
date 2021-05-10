@@ -1,8 +1,9 @@
-## Installing the core packages
-## BiocManager::install("Jiefei-Wang/DockerParallel")
+## Installing the packages
 ## BiocManager::install("bwlewis/doRedis")
+## BiocManager::install("Jiefei-Wang/DockerParallel")
 ## BiocManager::install("Jiefei-Wang/ECSFargateProvider")
-## BiocManager::install("Jiefei-Wang/baseFEDRContainer")
+## BiocManager::install("Jiefei-Wang/RedisBaseContainer")
+## BiocManager::install("Jiefei-Wang/doRedisContainer")
 
 ## The package used in the example
 ## install.packages(boot)
@@ -16,11 +17,10 @@ aws.ecx::aws_get_credentials()
 aws.ecx::aws_set_credentials()
 
 ## Create parallel cluster using
-## ECS fargate service and bioconductor foreach doredis container
+## ECS fargate service and r-base foreach doredis container
 library(DockerParallel)
-clusterPreset(cloudProvider = "ECSFargateProvider", container = "BiocFEDRContainer")
-cluster <- makeDockerCluster(workerNumber = 1L)
-
+clusterPreset(cloudProvider = "ECSFargateProvider", container = "rbaseDoRedis")
+cluster <- makeDockerCluster(workerNumber = 0L, workerCpu = 256, workerMemory = 512)
 cluster$startCluster()
 
 ## A temporary work around for the performance issue
@@ -31,7 +31,7 @@ cluster$workerContainer$setRPackages("boot")
 cluster$workerContainer$setSysPackages()
 
 
-cluster$setWorkerNumber(10)
+cluster$setWorkerNumber(1)
 
 ## Bootstrap 95% CI for R-Squared
 library(boot)
@@ -41,12 +41,12 @@ rsq <- function(formula, data, indices) {
     fit <- lm(formula, data=d)
     return(summary(fit)$r.square)
 }
-## bootstrapping with 100000 replications
+## bootstrapping with 10000 replications
 # user  system elapsed
 # 86.37    0.39   87.27
 system.time({
     results <- boot(data=mtcars, statistic=rsq,
-                    R=100000, formula=mpg~wt+disp)
+                    R=10000, formula=mpg~wt+disp)
     stats <- results$t
 })
 hist(stats, breaks = 100)
@@ -56,15 +56,13 @@ hist(stats, breaks = 100)
 library(foreach)
 foreach::getDoParWorkers()
 # user  system elapsed
-# 0.02    0.01   19.41
+# 0.00    0.06   22.52
 system.time(
-    stats <- foreach(x= 1:10, .combine = c, .packages = "boot")%dopar%{
+    stats <- foreach(x= 1:10, .combine = c)%dopar%{
+        library(boot)
         results <- boot(data=mtcars, statistic=rsq,
-                        R=10000, formula=mpg~wt+disp)
+                        R=1000, formula=mpg~wt+disp)
         results$t
     }
 )
 hist(stats, breaks = 100)
-
-
-
