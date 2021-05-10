@@ -1,4 +1,5 @@
 ## Installing the packages
+## BiocManager::install("foreach")
 ## BiocManager::install("bwlewis/doRedis")
 ## BiocManager::install("Jiefei-Wang/DockerParallel")
 ## BiocManager::install("Jiefei-Wang/ECSFargateProvider")
@@ -17,21 +18,17 @@ aws.ecx::aws_get_credentials()
 aws.ecx::aws_set_credentials()
 
 ## Create parallel cluster using
-## ECS fargate service and r-base foreach doredis container
+## ECS fargate service and bioconductor foreach doredis container
 library(DockerParallel)
 clusterPreset(cloudProvider = "ECSFargateProvider", container = "rbaseDoRedis")
-cluster <- makeDockerCluster(workerNumber = 0L, workerCpu = 256, workerMemory = 512)
+cluster <- makeDockerCluster(workerNumber = 0L)
 cluster$startCluster()
-
-## A temporary work around for the performance issue
-cluster@workerContainer$maxWorkerNum <- 1L
 
 ## Set the required package and the worker number
 cluster$workerContainer$setRPackages("boot")
-cluster$workerContainer$setSysPackages()
+cluster$setWorkerNumber(10)
 
-
-cluster$setWorkerNumber(1)
+# cluster$workerContainer$setSysPackages()
 
 ## Bootstrap 95% CI for R-Squared
 library(boot)
@@ -42,27 +39,25 @@ rsq <- function(formula, data, indices) {
     return(summary(fit)$r.square)
 }
 ## bootstrapping with 10000 replications
-# user  system elapsed
-# 86.37    0.39   87.27
 system.time({
-    results <- boot(data=mtcars, statistic=rsq,
-                    R=10000, formula=mpg~wt+disp)
-    stats <- results$t
+    stats <- foreach(x= 1:10, .combine = c)%do%{
+        library(boot)
+        boot(data=datasets::mtcars, statistic=rsq,
+             R=10000, formula=mpg~wt+disp)$t
+    }
 })
 hist(stats, breaks = 100)
 
 
 ## use foreach to parallelize the bootstrap
+## It might take a while to run the workers
 library(foreach)
 foreach::getDoParWorkers()
-# user  system elapsed
-# 0.00    0.06   22.52
 system.time(
-    stats <- foreach(x= 1:10, .combine = c)%dopar%{
+    stats <- foreach(x= 1:10, .combine = c,.verbose = TRUE)%dopar%{
         library(boot)
-        results <- boot(data=mtcars, statistic=rsq,
-                        R=1000, formula=mpg~wt+disp)
-        results$t
+        boot(data=datasets::mtcars, statistic=rsq,
+             R=10000, formula=mpg~wt+disp)$t
     }
 )
 hist(stats, breaks = 100)
